@@ -196,11 +196,11 @@ function resetAll(){if(confirm("大会データをすべて消去します。6�
 render();
 tournamentRef.on("value", snap=>{
  const remote=snap.val();
- if(remote && remote.names && remote.results!==undefined){
+ if(remote && Array.isArray(remote.names)){
    state=remote;
  }else{
    const local=JSON.parse(localStorage.getItem("sportsKing")||"null");
-   if(local && local.names && local.results!==undefined) state=local;
+   if(local && Array.isArray(local.names)) state=local;
    tournamentRef.set(state);
  }
  firebaseReady=true;
