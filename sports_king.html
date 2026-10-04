@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>総合スポーツ王決定戦</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--text:#18202a;--muted:#687382;--line:#e2e6eb;--accent:#111827;--gold:#d99b00;--silver:#7b8794;--bronze:#a55a2a;--danger:#d92d20;--green:#087443}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP","Hiragino Kaku Gothic ProN",Arial,sans-serif}
+header{background:#111827;color:white;padding:22px 16px 18px;position:sticky;top:0;z-index:10;box-shadow:0 2px 12px #0002}
+h1{font-size:22px;margin:0 0 5px}.sub{font-size:13px;color:#cbd5e1}.wrap{max-width:760px;margin:auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin:12px 0;box-shadow:0 2px 7px #00000008}
+h2{font-size:18px;margin:0 0 12px}.grid{display:grid;gap:10px}.names{grid-template-columns:repeat(2,1fr)}
+input,select,button{font:inherit}input,select{width:100%;padding:12px;border:1px solid #cfd5dc;border-radius:10px;background:white}
+button{border:0;border-radius:10px;padding:11px 14px;font-weight:700;cursor:pointer}.primary{background:#111827;color:#fff}.danger{background:#fff0ef;color:var(--danger);border:1px solid #ffd2ce}.secondary{background:#eef1f4;color:#111827}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between}.row>*{flex:1}.small{font-size:12px;color:var(--muted)}
+.score{font-size:27px;font-weight:800;text-align:right}.rank{font-weight:800;width:42px}.player{font-weight:700}.pts{font-weight:800;text-align:right;white-space:nowrap}
+.leader{display:grid;grid-template-columns:42px 1fr auto;gap:8px;align-items:center;padding:12px 0;border-bottom:1px solid var(--line)}.leader:last-child{border-bottom:0}
+.medal{font-size:22px}.negative{color:var(--danger)}.positive{color:var(--green)}
+.event{border:1px solid var(--line);border-radius:14px;margin:10px 0;overflow:hidden}.eventhead{padding:13px 14px;background:#fafbfc;display:flex;justify-content:space-between;align-items:center}.eventbody{padding:14px}.badge{font-size:11px;padding:5px 8px;border-radius:99px;background:#e9eef5;color:#374151}
+.choice{display:grid;grid-template-columns:1fr 1fr;gap:8px}.choice button{border:1px solid #cfd5dc;background:white;text-align:left}.choice button.active{background:#111827;color:white;border-color:#111827}
+.teambox{border:1px solid var(--line);border-radius:12px;padding:12px}.teamtitle{font-weight:800;margin-bottom:8px}.check{display:flex;align-items:center;gap:8px;padding:7px 0}.check input{width:auto}
+.table{width:100%;border-collapse:collapse}.table th,.table td{padding:9px 6px;border-bottom:1px solid var(--line);text-align:left}.table th{font-size:12px;color:var(--muted)}
+.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{flex:1;min-width:140px}
+.notice{padding:10px 12px;background:#fff8df;border:1px solid #f4df8c;border-radius:10px;font-size:13px}
+footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}
+@media(min-width:600px){.names{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<header><div class="wrap" style="padding:0"><h1>🏆 総合スポーツ王決定戦</h1><div class="sub">6人制・全8種目・総合ポイントランキング</div></div></header>
+<main class="wrap">
+<section class="card">
+<h2>👤 選手登録</h2>
+<div class="grid names" id="names"></div>
+<div class="actions" style="margin-top:12px">
+<button class="primary" onclick="saveNames()">名前を保存</button>
+<button class="secondary" onclick="randomTeams()">🎲 団体戦チームをランダム編成</button>
+</div>
+</section>
+
+<section class="card">
+<h2>🏆 現在の総合ランキング</h2>
+<div id="ranking"></div>
+<div class="notice">個人戦：1位 +3P / 2位 +2P / 3位 +1P / 4位 0P / 5位 −1P / 6位 −2P<br>団体戦：勝利チーム全員 +2P</div>
+</section>
+
+<section class="card">
+<h2>📋 競技結果を入力</h2>
+<div id="events"></div>
+</section>
+
+<section class="card">
+<h2>💰 最終賞金</h2>
+<table class="table"><thead><tr><th>順位</th><th>選手</th><th>ポイント</th><th>賞金</th></tr></thead><tbody id="prize"></tbody></table>
+</section>
+
+<section class="card">
+<h2>⚙️ 大会データ</h2>
+<div class="actions">
+<button class="secondary" onclick="exportData()">📤 データを書き出す</button>
+<label class="secondary" style="display:block;text-align:center;padding:11px 14px;border-radius:10px;font-weight:700;cursor:pointer">📥 データを読み込む<input id="importFile" type="file" accept=".json" style="display:none" onchange="importData(event)"></label>
+<button class="danger" onclick="resetAll()">大会をリセット</button>
+</div>
+</section>
+<footer>入力内容はこの端末のブラウザに自動保存されます。</footer>
+</main>
+
+<script>
+const events=[
+["bowling","🎳 ボーリング","team"],["tabletennis","🏓 卓球","team"],["basketball","🏀 3on3","team"],["futsal","⚽ フットサル","team"],
+["kart","🏎️ ゴーカート","individual"],["badminton","🏸 バドミントン","team"],["darts","🎯 ダーツ","individual"],["billiards","🎱 ビリヤード","team"]
+];
+const prizes=[15000,7000,5000,2000,1000,0], indiv=[3,2,1,0,-1,-2];
+let state=JSON.parse(localStorage.getItem("sportsKing")||"null")||{
+ names:["A","B","C","D","E","F"], results:{}, teams:[]
+};
+function persist(){localStorage.setItem("sportsKing",JSON.stringify(state));render();}
+function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
+function saveNames(){
+ document.querySelectorAll(".nameInput").forEach((x,i)=>state.names[i]=x.value.trim()||String.fromCharCode(65+i));
+ persist();
+}
+function renderNames(){
+ document.getElementById("names").innerHTML=state.names.map((n,i)=>`<input class="nameInput" value="${esc(n)}" placeholder="選手${i+1}">`).join("");
+}
+function totals(){
+ const t=Array(6).fill(0);
+ events.forEach(([id,,type])=>{
+  const r=state.results[id]; if(!r)return;
+  if(type==="individual" && r.order) r.order.forEach((p,i)=>{if(p>=0)t[p]+=indiv[i]});
+  if(type==="team" && r.winners) r.winners.forEach(p=>{if(p>=0)t[p]+=2});
+ });
+ return t;
+}
+function ranking(){
+ const t=totals();
+ return [...Array(6).keys()].sort((a,b)=>t[b]-t[a]||a-b).map((p,i)=>({p,i,pts:t[p]}));
+}
+function renderRanking(){
+ const rs=ranking();
+ document.getElementById("ranking").innerHTML=rs.map((x,i)=>{
+  const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}位`;
+  return `<div class="leader"><div class="medal">${medal}</div><div class="player">${esc(state.names[x.p])}</div><div class="pts ${x.pts<0?"negative":x.pts>0?"positive":""}">${x.pts>0?"+":""}${x.pts}P</div></div>`;
+ }).join("");
+}
+function renderEvents(){
+ let out="";
+ events.forEach(([id,name,type],idx)=>{
+  const r=state.results[id]||{};
+  out+=`<div class="event"><div class="eventhead"><div><b>${idx+1}. ${name}</b><div class="small">${type==="individual"?"個人戦":"団体戦"}</div></div><span class="badge">${r.done?"入力済み":"未入力"}</span></div><div class="eventbody">`;
+  if(type==="individual"){
+   out+=`<div class="small" style="margin-bottom:8px">1位〜6位を順番に選択してください。</div>`;
+   out+=`<div class="grid">`+indiv.map((_,i)=>`<div class="row"><span style="flex:0 0 70px">${i+1}位 (${indiv[i]>0?"+":""}${indiv[i]}P)</span><select onchange="setIndividual('${id}',${i},this.value)"><option value="">選択</option>${state.names.map((n,p)=>`<option value="${p}" ${r.order&&r.order[i]===p?"selected":""}>${esc(n)}</option>`).join("")}</select></div>`).join("")+`</div>`;
+   out+=`<button class="primary" style="margin-top:10px;width:100%" onclick="finishIndividual('${id}')">結果を確定</button>`;
+  }else{
+   out+=`<div class="small" style="margin-bottom:8px">勝利した3人を選択してください（勝者 +2P）。</div>`;
+   out+=`<div class="grid choice">`+state.names.map((n,p)=>`<button class="${r.winners&&r.winners.includes(p)?"active":""}" onclick="toggleWinner('${id}',${p})">${r.winners&&r.winners.includes(p)?"✓ ":""}${esc(n)}</button>`).join("")+`</div>`;
+   out+=`<button class="primary" style="margin-top:10px;width:100%" onclick="finishTeam('${id}')">勝利チームを確定</button>`;
+  }
+  out+=`</div></div>`;
+ });
+ document.getElementById("events").innerHTML=out;
+}
+function setIndividual(id,i,val){
+ if(!state.results[id])state.results[id]={order:Array(6).fill(null)};
+ state.results[id].order[i]=val===""?null:+val;
+}
+function finishIndividual(id){
+ const r=state.results[id];
+ if(!r||r.order.length!==6||r.order.some(x=>x===null)||new Set(r.order).size!==6){alert("1位〜6位を、6人それぞれ1回ずつ選択してください。");return;}
+ r.done=true; persist();
+}
+function toggleWinner(id,p){
+ if(!state.results[id])state.results[id]={winners:[]};
+ const a=state.results[id].winners||[];
+ const i=a.indexOf(p); if(i>=0)a.splice(i,1); else if(a.length<3)a.push(p);
+ state.results[id].winners=a; renderEvents();
+}
+function finishTeam(id){
+ const r=state.results[id];
+ if(!r||!r.winners||r.winners.length!==3){alert("勝利チームの3人を選択してください。");return;}
+ r.done=true;persist();
+}
+function randomTeams(){
+ let a=[0,1,2,3,4,5].sort(()=>Math.random()-.5);
+ state.teams=[a.slice(0,3),a.slice(3)];
+ alert(`チームA：${state.teams[0].map(p=>state.names[p]).join("・")}\nチームB：${state.teams[1].map(p=>state.names[p]).join("・")}`);
+}
+function renderPrize(){
+ const rs=ranking();
+ document.getElementById("prize").innerHTML=rs.map((x,i)=>`<tr><td>${i+1}位</td><td>${esc(state.names[x.p])}</td><td>${x.pts}P</td><td><b>${prizes[i].toLocaleString()}円</b></td></tr>`).join("");
+}
+function render(){renderNames();renderRanking();renderEvents();renderPrize();}
+function exportData(){
+ const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="sports-king-data.json";a.click();URL.revokeObjectURL(a.href);
+}
+function importData(e){
+ const f=e.target.files[0];if(!f)return;
+ const rd=new FileReader();rd.onload=()=>{try{const x=JSON.parse(rd.result);if(!x.names||!x.results)throw 0;state=x;persist();alert("データを読み込みました。")}catch{alert("読み込みに失敗しました。")}};rd.readAsText(f);
+}
+function resetAll(){if(confirm("大会データをすべて消去します。よろしいですか？")){state={names:["A","B","C","D","E","F"],results:{},teams:[]};persist();}}
+render();
+</script>
+</body>
+</html>
