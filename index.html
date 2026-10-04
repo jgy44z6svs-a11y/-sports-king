@@ -92,24 +92,34 @@ let state={
  names:["ナガマツ","ミツオカ","ノゾミ","フウカ","ユウヤ","イチハラ"], results:{}, teams:[]
 };
 let firebaseReady=false;
+const drafts={};
+function normalize(x){
+ x=x||{};
+ return {names:Array.isArray(x.names)&&x.names.length===6?x.names:state.names,
+ results:x.results&&typeof x.results==='object'?x.results:{},
+ teams:Array.isArray(x.teams)?x.teams:[]};
+}
+function cache(){try{localStorage.setItem("sportsKing",JSON.stringify(state));}catch(e){}}
+function writeData(ref,value){
+ setSyncStatus("🟡 保存中...");
+ return ref.set(value).then(()=>{setSyncStatus("🟢 保存しました・リアルタイム同期中");})
+ .catch(err=>{console.error(err);setSyncStatus("🔴 保存失敗："+err.message);alert("保存できませんでした。通信状態とFirebaseの設定を確認してください。");throw err;});
+}
+function getDraft(id,type){
+ if(!drafts[id]){
+  const r=state.results[id]||{};
+  drafts[id]=type==='individual'?{order:Array.from({length:6},(_,i)=>r.order&&Number.isInteger(r.order[i])?r.order[i]:null)}:{winners:Array.isArray(r.winners)?r.winners.slice():[]};
+ }
+ return drafts[id];
+}
 
 function setSyncStatus(text){
  const el=document.getElementById("syncStatus");
  if(el)el.textContent=text;
 }
 function persist(){
- localStorage.setItem("sportsKing",JSON.stringify(state));
- render();
- if(firebaseReady){
-   // 名前は saveNames() だけで保存する。
-   // 競技結果やチーム保存時に、別端末の古い名前で上書きしない。
-   tournamentRef.update({
-     results: state.results || {},
-     teams: state.teams || []
-   })
-   .then(()=>setSyncStatus("🟢 リアルタイム同期中"))
-   .catch(err=>{console.error(err);setSyncStatus("🔴 同期エラー");});
- }
+ cache();render();
+ writeData(tournamentRef,state).catch(()=>{});
 }
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
 function saveNames(){
@@ -126,7 +136,7 @@ function saveNames(){
  tournamentRef.child("names").set(newNames)
    .then(function(){
      state.names=newNames;
-     localStorage.setItem("sportsKing",JSON.stringify(state));
+     cache();
      render();
      firebaseReady=true;
      setSyncStatus("🟢 名前を保存しました・リアルタイム同期中");
@@ -165,8 +175,9 @@ function renderRanking(){
 function renderEvents(){
  let out="";
  events.forEach(([id,name,type],idx)=>{
-  const r=state.results[id]||{};
-  out+=`<div class="event"><div class="eventhead"><div><b>${idx+1}. ${name}</b><div class="small">${type==="individual"?"個人戦":"団体戦"}</div></div><span class="badge">${r.done?"入力済み":"未入力"}</span></div><div class="eventbody">`;
+  const saved=state.results[id]||{};
+  const r=drafts[id]||saved;
+  out+=`<div class="event"><div class="eventhead"><div><b>${idx+1}. ${name}</b><div class="small">${type==="individual"?"個人戦":"団体戦"}</div></div><span class="badge">${drafts[id]?"編集中":saved.done?"入力済み":"未入力"}</span></div><div class="eventbody">`;
   if(type==="individual"){
    out+=`<div class="small" style="margin-bottom:8px">1位〜6位を順番に選択してください。</div>`;
    out+=`<div class="grid">`+indiv.map((_,i)=>`<div class="row"><span style="flex:0 0 70px">${i+1}位 (${indiv[i]>0?"+":""}${indiv[i]}P)</span><select onchange="setIndividual('${id}',${i},this.value)"><option value="">選択</option>${state.names.map((n,p)=>`<option value="${p}" ${r.order&&r.order[i]===p?"selected":""}>${esc(n)}</option>`).join("")}</select></div>`).join("")+`</div>`;
@@ -181,36 +192,38 @@ function renderEvents(){
  document.getElementById("events").innerHTML=out;
 }
 function setIndividual(id,i,val){
- if(!state.results[id])state.results[id]={order:Array(6).fill(null)};
- state.results[id].order[i]=val===""?null:+val;
- // 1位〜6位を選び終わるまでは画面だけ更新する
- renderRanking();
- renderPrize();
+ getDraft(id,'individual').order[i]=val===""?null:Number(val);
+}
+function saveResult(id,r){
+ const result=JSON.parse(JSON.stringify(r));result.done=true;
+ writeData(tournamentRef.child('results').child(id),result).then(()=>{
+  state.results[id]=result;
+  if(drafts[id]===r)delete drafts[id];
+  cache();render();
+ }).catch(()=>{});
 }
 function finishIndividual(id){
- const r=state.results[id];
- if(!r||r.order.length!==6||r.order.some(x=>x===null)||new Set(r.order).size!==6){alert("1位〜6位を、6人それぞれ1回ずつ選択してください。");return;}
- r.done=true; persist();
+ const r=getDraft(id,'individual');
+ if(r.order.length!==6||r.order.some(x=>!Number.isInteger(x)||x<0||x>5)||new Set(r.order).size!==6){alert("1位〜6位を、6人それぞれ1回ずつ選択してください。");return;}
+ saveResult(id,r);
 }
 function toggleWinner(id,p){
- if(!state.results[id])state.results[id]={winners:[]};
- const a=state.results[id].winners||[];
- const i=a.indexOf(p); if(i>=0)a.splice(i,1); else if(a.length<3)a.push(p);
- state.results[id].winners=a;
- // 3人を選び終わるまでは画面だけ更新する
+ const r=getDraft(id,'team');
+ const i=r.winners.indexOf(p);
+ if(i>=0)r.winners.splice(i,1);else if(r.winners.length<3)r.winners.push(p);
+ else {alert("勝利者は3人までです。選択済みの人を解除してください。");return;}
  renderEvents();
- renderRanking();
- renderPrize();
 }
 function finishTeam(id){
- const r=state.results[id];
- if(!r||!r.winners||r.winners.length!==3){alert("勝利チームの3人を選択してください。");return;}
- r.done=true;persist();
+ const r=getDraft(id,'team');
+ if(r.winners.length!==3){alert("勝利チームの3人を選択してください。");return;}
+ saveResult(id,r);
 }
 function randomTeams(){
  let a=[0,1,2,3,4,5].sort(()=>Math.random()-.5);
  state.teams=[a.slice(0,3),a.slice(3)];
- persist();
+ cache();
+ writeData(tournamentRef.child("teams"),state.teams).catch(()=>{});
  alert(`チームA：${state.teams[0].map(p=>state.names[p]).join("・")}\nチームB：${state.teams[1].map(p=>state.names[p]).join("・")}`);
 }
 function renderPrize(){
@@ -230,28 +243,25 @@ function exportData(){
 }
 function importData(e){
  const f=e.target.files[0];if(!f)return;
- const rd=new FileReader();rd.onload=()=>{try{const x=JSON.parse(rd.result);if(!x.names||!x.results)throw 0;state=x;persist();alert("データを読み込みました。")}catch{alert("読み込みに失敗しました。")}};rd.readAsText(f);
+ const rd=new FileReader();rd.onload=()=>{try{const x=JSON.parse(rd.result);if(!x.names||!x.results)throw 0;state=normalize(x);Object.keys(drafts).forEach(id=>delete drafts[id]);persist();alert("データを読み込みました。")}catch{alert("読み込みに失敗しました。")}};rd.readAsText(f);
 }
-function resetAll(){if(confirm("大会データをすべて消去します。6人全員の画面から消えます。よろしいですか？")){state={names:["ナガマツ","ミツオカ","ノゾミ","フウカ","ユウヤ","イチハラ"],results:{},teams:[]};persist();}}
+function resetAll(){if(confirm("大会データをすべて消去します。6人全員の画面から消えます。よろしいですか？")){state={names:["ナガマツ","ミツオカ","ノゾミ","フウカ","ユウヤ","イチハラ"],results:{},teams:[]};Object.keys(drafts).forEach(id=>delete drafts[id]);persist();}}
 
 render();
 tournamentRef.on("value", snap=>{
  const remote=snap.val();
  if(remote && Array.isArray(remote.names)){
-   state=remote;
+   state=normalize(remote);
  }else{
    // Firebaseが空のときだけ初期データを作成。
    // 既存データ全体を古い端末の内容で上書きしない。
-   tournamentRef.update({
-     names: state.names,
-     results: state.results || {},
-     teams: state.teams || []
-   });
+   tournamentRef.transaction(current=>current===null?state:undefined)
+     .catch(err=>{console.error(err);setSyncStatus("🔴 初期データの保存失敗");});
  }
  firebaseReady=true;
- localStorage.setItem("sportsKing",JSON.stringify(state));
+ cache();
  render();
- setSyncStatus("🟢 リアルタイム同期中（v2）");
+ setSyncStatus("🟢 リアルタイム同期中（修正版 v3）");
 }, err=>{
  console.error(err);
  firebaseReady=false;
