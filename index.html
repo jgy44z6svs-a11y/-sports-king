@@ -63,19 +63,49 @@ footer{text-align:center;color:var(--muted);font-size:12px;padding:20px}
 <button class="danger" onclick="resetAll()">大会をリセット</button>
 </div>
 </section>
-<footer>入力内容はこの端末のブラウザに自動保存されます。</footer>
+<footer><span id="syncStatus">🔥 Firebaseに接続中...</span><br>6人の端末で大会データをリアルタイム共有します。</footer>
 </main>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js"></script>
 <script>
+const firebaseConfig = {
+  apiKey: "AIzaSyDb2nkUAD57d5Tj-ytwH7jrGJo0_yquTP0",
+  authDomain: "sports-king-de9e4.firebaseapp.com",
+  databaseURL: "https://sports-king-de9e4-default-rtdb.firebaseio.com/",
+  projectId: "sports-king-de9e4",
+  storageBucket: "sports-king-de9e4.firebasestorage.app",
+  messagingSenderId: "574269915410",
+  appId: "1:574269915410:web:cb87fe522a7b602978b3cb",
+  measurementId: "G-PCGH34WP9X"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+const tournamentRef = db.ref("sportsKing/main");
+
 const events=[
 ["bowling","🎳 ボーリング","team"],["tabletennis","🏓 卓球","team"],["basketball","🏀 3on3","team"],["futsal","⚽ フットサル","team"],
 ["kart","🏎️ ゴーカート","individual"],["badminton","🏸 バドミントン","team"],["darts","🎯 ダーツ","individual"],["billiards","🎱 ビリヤード","team"]
 ];
 const prizes=[15000,7000,5000,2000,1000,0], indiv=[3,2,1,0,-1,-2];
-let state=JSON.parse(localStorage.getItem("sportsKing")||"null")||{
+let state={
  names:["A","B","C","D","E","F"], results:{}, teams:[]
 };
-function persist(){localStorage.setItem("sportsKing",JSON.stringify(state));render();}
+let firebaseReady=false;
+
+function setSyncStatus(text){
+ const el=document.getElementById("syncStatus");
+ if(el)el.textContent=text;
+}
+function persist(){
+ localStorage.setItem("sportsKing",JSON.stringify(state));
+ render();
+ if(firebaseReady){
+   tournamentRef.set(state)
+     .then(()=>setSyncStatus("🟢 リアルタイム同期中"))
+     .catch(err=>{console.error(err);setSyncStatus("🔴 同期エラー");});
+ }
+}
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
 function saveNames(){
  document.querySelectorAll(".nameInput").forEach((x,i)=>state.names[i]=x.value.trim()||String.fromCharCode(65+i));
@@ -145,6 +175,7 @@ function finishTeam(id){
 function randomTeams(){
  let a=[0,1,2,3,4,5].sort(()=>Math.random()-.5);
  state.teams=[a.slice(0,3),a.slice(3)];
+ persist();
  alert(`チームA：${state.teams[0].map(p=>state.names[p]).join("・")}\nチームB：${state.teams[1].map(p=>state.names[p]).join("・")}`);
 }
 function renderPrize(){
@@ -160,8 +191,27 @@ function importData(e){
  const f=e.target.files[0];if(!f)return;
  const rd=new FileReader();rd.onload=()=>{try{const x=JSON.parse(rd.result);if(!x.names||!x.results)throw 0;state=x;persist();alert("データを読み込みました。")}catch{alert("読み込みに失敗しました。")}};rd.readAsText(f);
 }
-function resetAll(){if(confirm("大会データをすべて消去します。よろしいですか？")){state={names:["A","B","C","D","E","F"],results:{},teams:[]};persist();}}
+function resetAll(){if(confirm("大会データをすべて消去します。6人全員の画面から消えます。よろしいですか？")){state={names:["A","B","C","D","E","F"],results:{},teams:[]};persist();}}
+
 render();
+tournamentRef.on("value", snap=>{
+ const remote=snap.val();
+ if(remote && remote.names && remote.results!==undefined){
+   state=remote;
+ }else{
+   const local=JSON.parse(localStorage.getItem("sportsKing")||"null");
+   if(local && local.names && local.results!==undefined) state=local;
+   tournamentRef.set(state);
+ }
+ firebaseReady=true;
+ localStorage.setItem("sportsKing",JSON.stringify(state));
+ render();
+ setSyncStatus("🟢 リアルタイム同期中");
+}, err=>{
+ console.error(err);
+ firebaseReady=false;
+ setSyncStatus("🔴 Firebase接続エラー");
+});
 </script>
 </body>
 </html>
