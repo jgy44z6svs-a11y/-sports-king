@@ -101,9 +101,14 @@ function persist(){
  localStorage.setItem("sportsKing",JSON.stringify(state));
  render();
  if(firebaseReady){
-   tournamentRef.set(state)
-     .then(()=>setSyncStatus("🟢 リアルタイム同期中"))
-     .catch(err=>{console.error(err);setSyncStatus("🔴 同期エラー");});
+   // 名前は saveNames() だけで保存する。
+   // 競技結果やチーム保存時に、別端末の古い名前で上書きしない。
+   tournamentRef.update({
+     results: state.results || {},
+     teams: state.teams || []
+   })
+   .then(()=>setSyncStatus("🟢 リアルタイム同期中"))
+   .catch(err=>{console.error(err);setSyncStatus("🔴 同期エラー");});
  }
 }
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
@@ -114,15 +119,15 @@ function saveNames(){
    newNames[i]=(inputs[i]&&inputs[i].value.trim())||String.fromCharCode(65+i);
  }
 
- // 先に画面へ反映
- state.names=newNames;
- localStorage.setItem("sportsKing",JSON.stringify(state));
- render();
  setSyncStatus("🟡 名前を保存中...");
 
- // Firebaseへ「名前」だけを直接保存
+ // Firebaseへ「名前」だけを保存する。
+ // 保存成功後に画面へ反映するので、古いデータへの巻き戻りを防ぐ。
  tournamentRef.child("names").set(newNames)
    .then(function(){
+     state.names=newNames;
+     localStorage.setItem("sportsKing",JSON.stringify(state));
+     render();
      firebaseReady=true;
      setSyncStatus("🟢 名前を保存しました・リアルタイム同期中");
      alert("名前を保存しました。");
@@ -177,6 +182,8 @@ function renderEvents(){
 function setIndividual(id,i,val){
  if(!state.results[id])state.results[id]={order:Array(6).fill(null)};
  state.results[id].order[i]=val===""?null:+val;
+ // 順位の選択内容をその場で保存・同期
+ persist();
 }
 function finishIndividual(id){
  const r=state.results[id];
@@ -187,7 +194,10 @@ function toggleWinner(id,p){
  if(!state.results[id])state.results[id]={winners:[]};
  const a=state.results[id].winners||[];
  const i=a.indexOf(p); if(i>=0)a.splice(i,1); else if(a.length<3)a.push(p);
- state.results[id].winners=a; renderEvents();
+ state.results[id].winners=a;
+ renderEvents();
+ // 勝利者を選択した時点で結果を保存・同期
+ persist();
 }
 function finishTeam(id){
  const r=state.results[id];
@@ -221,9 +231,13 @@ tournamentRef.on("value", snap=>{
  if(remote && Array.isArray(remote.names)){
    state=remote;
  }else{
-   const local=JSON.parse(localStorage.getItem("sportsKing")||"null");
-   if(local && Array.isArray(local.names)) state=local;
-   tournamentRef.set(state);
+   // Firebaseが空のときだけ初期データを作成。
+   // 既存データ全体を古い端末の内容で上書きしない。
+   tournamentRef.update({
+     names: state.names,
+     results: state.results || {},
+     teams: state.teams || []
+   });
  }
  firebaseReady=true;
  localStorage.setItem("sportsKing",JSON.stringify(state));
