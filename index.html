@@ -89,7 +89,7 @@ const events=[
 ];
 const prizes=[15000,7000,5000,2000,1000,0], indiv=[3,2,1,0,-1,-2];
 let state={
- names:["A","B","C","D","E","F"], results:{}, teams:[]
+ names:["ナガマツ","ミツオカ","ノゾミ","フウカ","ユウヤ","イチハラ"], results:{}, teams:[]
 };
 let firebaseReady=false;
 
@@ -108,8 +108,30 @@ function persist(){
 }
 function esc(s){return String(s).replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));}
 function saveNames(){
- document.querySelectorAll(".nameInput").forEach((x,i)=>state.names[i]=x.value.trim()||String.fromCharCode(65+i));
- persist();
+ const inputs=document.querySelectorAll(".nameInput");
+ const newNames=[];
+ for(let i=0;i<6;i++){
+   newNames[i]=(inputs[i]&&inputs[i].value.trim())||String.fromCharCode(65+i);
+ }
+
+ // 先に画面へ反映
+ state.names=newNames;
+ localStorage.setItem("sportsKing",JSON.stringify(state));
+ render();
+ setSyncStatus("🟡 名前を保存中...");
+
+ // Firebaseへ「名前」だけを直接保存
+ tournamentRef.child("names").set(newNames)
+   .then(function(){
+     firebaseReady=true;
+     setSyncStatus("🟢 名前を保存しました・リアルタイム同期中");
+     alert("名前を保存しました。");
+   })
+   .catch(function(err){
+     console.error(err);
+     setSyncStatus("🔴 名前の保存に失敗しました");
+     alert("名前を保存できませんでした。Firebaseのルールを確認してください。");
+   });
 }
 function renderNames(){
  document.getElementById("names").innerHTML=state.names.map((n,i)=>`<input class="nameInput" value="${esc(n)}" placeholder="選手${i+1}">`).join("");
@@ -191,7 +213,7 @@ function importData(e){
  const f=e.target.files[0];if(!f)return;
  const rd=new FileReader();rd.onload=()=>{try{const x=JSON.parse(rd.result);if(!x.names||!x.results)throw 0;state=x;persist();alert("データを読み込みました。")}catch{alert("読み込みに失敗しました。")}};rd.readAsText(f);
 }
-function resetAll(){if(confirm("大会データをすべて消去します。6人全員の画面から消えます。よろしいですか？")){state={names:["A","B","C","D","E","F"],results:{},teams:[]};persist();}}
+function resetAll(){if(confirm("大会データをすべて消去します。6人全員の画面から消えます。よろしいですか？")){state={names:["ナガマツ","ミツオカ","ノゾミ","フウカ","ユウヤ","イチハラ"],results:{},teams:[]};persist();}}
 
 render();
 tournamentRef.on("value", snap=>{
